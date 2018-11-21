@@ -1,4 +1,8 @@
 language: shell
 sudo: false
+before_install:
+  - sudo apt-get -qq update
+install:
+  - sudo apt-get -qq install pylint
 script:
   - bash -c 'shopt -s globstar; shellcheck **/*.sh .git-hooks/*; pylint **/*.py'
