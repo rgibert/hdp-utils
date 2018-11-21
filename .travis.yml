@@ -5,4 +5,4 @@ before_install:
 install:
   - sudo apt-get -qq install pylint
 script:
-  - bash -c 'shopt -s globstar; shellcheck **/*.sh .git-hooks/*; pylint **/*.py'
+  - bash -c 'shopt -s globstar; shellcheck **/*.sh .git-hooks/*'
