@@ -21,16 +21,16 @@ class AmbariInventory(object):
 
     def __init__(self):
         if os.environ.get('AMBARI_CLUSTER_NAME') is None:
-            print "Required AMBARI_CLUSTER_NAME environment variable not set."
+            print("Required AMBARI_CLUSTER_NAME environment variable not set.")
             sys.exit(1)
         elif os.environ.get('AMBARI_USER_NAME') is None:
-            print "Required AMBARI_USER_NAME environment variable not set."
+            print("Required AMBARI_USER_NAME environment variable not set.")
             sys.exit(1)
         elif os.environ.get('AMBARI_USER_PASS') is None:
-            print "Required AMBARI_USER_PASS environment variable not set."
+            print("Required AMBARI_USER_PASS environment variable not set.")
             sys.exit(1)
         elif os.environ.get('AMBARI_URI') is None:
-            print "Required AMBARI_URI environment variable not set."
+            print("Required AMBARI_URI environment variable not set.")
             sys.exit(1)
 
         # Get the cluster name from the OS environment variable AMBARI_CLUSTER_NAME
@@ -47,10 +47,9 @@ class AmbariInventory(object):
 
         # Called with `--list`.
         if args.list:
-            print json.dumps(ambari_inv)
+            print(json.dumps(ambari_inv))
         elif args.host:
-            # Not implemented, we're embedding _meta in --list
-            print json.dumps(ambari_inv)
+            print('')
 
     # Handle API calls to Ambari
     def ambari_get(self, path):
@@ -114,26 +113,29 @@ class AmbariInventory(object):
             'hadoop': {
                 'children': [self.cluster_name]
             },
-            self.cluster_name + '-ambari-agent': {
+            'hdp': {
+                'children': 'hadoop'
+            },
+            self.cluster_name + '_ambari_agent': {
                 'children': ['hadoop']
             },
-            self.cluster_name + '-ambari-server': {
+            self.cluster_name + '_ambari_server': {
                 'hosts': [ambari_host]
             },
-            self.cluster_name + '-ambari': {
-                'children': [self.cluster_name + '-ambari-agent',
-                             self.cluster_name + '-ambari-server']
+            self.cluster_name + '_ambari': {
+                'children': [self.cluster_name + '_ambari_agent',
+                             self.cluster_name + '_ambari_server']
             },
-            'ambari-agent': {
-                'children': [self.cluster_name + '-ambari-agent']
+            'ambari_agent': {
+                'children': [self.cluster_name + '_ambari_agent']
             },
-            'ambari-server': {
-                'children': [self.cluster_name + '-ambari-server']
+            'ambari_server': {
+                'children': [self.cluster_name + '_ambari_server']
             },
             'ambari': {
                 'children': [
-                    'ambari-agent',
-                    'ambari-server'
+                    'ambari_agent',
+                    'ambari_server'
                 ]
             },
             '_meta': {
@@ -146,7 +148,7 @@ class AmbariInventory(object):
             # convert service_k to lower case
             service_k = service_k.lower()
 
-            key_clus_srv = self.cluster_name + '-' + service_k
+            key_clus_srv = self.cluster_name + '_' + service_k
 
             # Add the service group as a child of the cluster group
             if key_clus_srv not in inventory[self.cluster_name]['children']:
@@ -167,27 +169,20 @@ class AmbariInventory(object):
                 # convert component_k to lower case
                 component_k = component_k.lower()
 
-                key_clus_srv_comp = key_clus_srv + '-' + component_k
+                key_clus_srv_comp = key_clus_srv + '_' + component_k
 
                 # strip doubling up names of services/components
                 component_k = re.sub(service_k + '_', '', component_k)
 
                 # rename component / service name duplication for clients
-                # pylint: disable=too-many-boolean-expressions
-                if (
-                        (service_k == 'pig' and component_k == 'pig') or
-                        (service_k == 'slider' and component_k == 'slider') or
-                        (service_k == 'sqoop' and component_k == 'sqoop')
-                ):
+                if (service_k == component_k):
                     component_k = 'client'
 
                 # rename infra_solr to infra_solr_server for consistency
                 elif (service_k == 'ambari_infra' and component_k == 'infra_solr'):
                     component_k = 'infra_solr_server'
 
-                if (
-                        key_clus_srv_comp not in inventory[key_clus_srv]['children']
-                ):
+                if (key_clus_srv_comp not in inventory[key_clus_srv]['children']):
                     inventory[key_clus_srv]['children'].append(key_clus_srv_comp)
 
                 inventory[key_clus_srv_comp] = {
@@ -195,7 +190,7 @@ class AmbariInventory(object):
                     'vars': {}
                 }
 
-                inventory[service_k + '-' + component_k] = {
+                inventory[service_k + '_' + component_k] = {
                     'children': [key_clus_srv_comp]
                 }
 
