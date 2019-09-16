@@ -7,17 +7,25 @@ import sys
 import argparse
 import json
 import re
+import urllib3
 import requests
- 
+
 logging.basicConfig(level=os.environ.get("AMBARI_LOG_LEVEL", "INFO"))
+
+# Disable SSL warning
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def process_args():
     """Process command line arguments"""
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file', action='store', help='where to store the resulting service discovery file')
+    parser.add_argument(
+        '--file',
+        action='store',
+        help='where to store the resulting service discovery file'
+    )
     return parser.parse_args()
 
-def get_env_var(var_name, exit_on_missing = True):
+def get_env_var(var_name, exit_on_missing=True):
     """Retrieve the value of environment variables"""
     if os.environ.get(var_name) is None:
         if exit_on_missing:
@@ -28,7 +36,7 @@ def get_env_var(var_name, exit_on_missing = True):
     else:
         return os.environ[var_name]
 
-class AmbariPrometheusServiceDiscovery(object):
+class AmbariPrometheusServiceDiscovery():
     """Class for generating Ambari Prometheus host lists"""
 
     def __init__(self):
@@ -39,46 +47,24 @@ class AmbariPrometheusServiceDiscovery(object):
 
         args = process_args()
 
-        service_list = self.get_services()
         host_component_list = self.get_host_component_list()
-        targets = self.generate_targets(host_component_list, service_list)
+        targets = self.generate_targets(host_component_list)
 
-        logging.debug('writing to ' + args.file)
+        logging.debug('writing to %s', args.file)
         with open(args.file, 'w') as json_file:
             json.dump(targets, json_file)
 
     def ambari_get(self, path):
         """Wrapper function for making REST calls to Ambari"""
         full_uri = self._uri + '/api/v1/clusters/' + self._cluster_name + path
-        
+
         logging.debug(full_uri)
 
         return requests.get(
             full_uri,
             auth=(self._ambari_user, self._ambari_pass),
             verify=False)
-    
-    def get_services(self):
-        """Returns a dict with all the components of each service"""
-        services = {}
 
-        logging.debug('Getting service list')
-        result = self.ambari_get('/services')
-
-        # pylint: disable=R0101,no-member
-        if result.status_code == requests.codes.ok:
-            for item in json.loads(result.text)['items']:
-                services[item['ServiceInfo']['service_name'].lower()] = {}
-
-            for service_k, _ in services:
-                logging.debug('Getting components for service ' + service_k)
-                result = self.ambari_get('/services/' + service_k)
-
-                for item in json.loads(result.text)['components']:
-                    services[service_k].append(item['ServiceComponentInfo']['component_name'].lower())
-
-        return services
-    
     def get_host_component_list(self):
         """Generates a list of hosts and their installed components"""
         hosts = {}
@@ -89,47 +75,67 @@ class AmbariPrometheusServiceDiscovery(object):
         # pylint: disable=R0101,no-member
         if result.status_code == requests.codes.ok:
             for item in json.loads(result.text)['items']:
-                hosts[item['Hosts']['host_name']] = {}
+                hosts[item['Hosts']['host_name']] = []
 
-            for host_k, _ in hosts:
-                logging.debug('Getting component list for host = ' + host_k)
+            for host_k, _ in hosts.items():
+                logging.debug('Getting component list for host = %s', host_k)
                 result = self.ambari_get('/hosts/' + host_k)
 
                 # pylint: disable=R0101,no-member
                 if result.status_code == requests.codes.ok:
                     for item in json.loads(result.text)['host_components']:
-                        hosts[host_k].append(item['HostRoles']['component_name'].lower())
+                        hosts[host_k].append(item['HostRoles']['component_name'])
+                else:
+                    result.raise_for_status()
+        else:
+            result.raise_for_status()
 
         return hosts
 
-    def generate_targets(self, hosts, services):
+    def generate_targets(self, hosts):
         """Converts a service list into Prometheus service discovery format"""
 
         ambari_host = re.sub(r'https?:\/\/', '', self._uri)
         ambari_host = re.sub(r':\d+', '', ambari_host)
 
-        targets = []
+        master_target_index = 0
+        worker_target_index = 1
 
-        targets[ambari_host] = {
-            'cluster': self._cluster_name,
-            'components': 'ambari'
-        }
+        targets = [
+            {
+                'targets': [],
+                'labels': {
+                    'hadoop_cluster': self._cluster_name,
+                    'node_type': 'master'
+                }
+            },
+            {
+                'targets': [],
+                'labels': {
+                    'hadoop_cluster': self._cluster_name,
+                    'node_type': 'worker'
+                }
+            }
+        ]
 
         # Loop over hosts
-        for host, components in hosts.iteritems():
-            if targets[host] is None:
-                targets[host] = {
-                    'cluster': self._cluster_name,
-                    'components': ''
-                }
-            
+        for host, components in hosts.items():
+            is_master = False
+
             for component in components:
-                if targets[host]['components'] != '':
-                    targets[host]['components'] = targets[host]['components'] + ","
-                
-                for service, service_components in services:
-                    if component in service_components:
-                        targets[host]['components'] = targets[host]['components'] + service + '_' + component
+                if component in (
+                        'JOURNALNODE',
+                        'ZOOKEEPER_SERVER',
+                        'HIVE_SERVER',
+                        'NAMENODE',
+                        'RESOURCEMANAGER'):
+                    is_master = True
+
+            if is_master:
+                logging.debug('%s host identified as master node', host)
+                targets[master_target_index]['targets'].append(host)
+            else:
+                targets[worker_target_index]['targets'].append(host)
 
         return targets
 
