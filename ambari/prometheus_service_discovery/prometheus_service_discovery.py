@@ -103,7 +103,7 @@ class AmbariPrometheusServiceDiscovery():
 
         targets = [
             {
-                'targets': [],
+                'targets': [ 'ambari_host' ],
                 'labels': {
                     'hadoop_cluster': self._cluster_name,
                     'node_type': 'master'
