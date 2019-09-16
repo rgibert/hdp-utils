@@ -103,7 +103,7 @@ class AmbariPrometheusServiceDiscovery():
 
         targets = [
             {
-                'targets': [ 'ambari_host' ],
+                'targets': ['ambari_host'],
                 'labels': {
                     'hadoop_cluster': self._cluster_name,
                     'node_type': 'master'
@@ -131,11 +131,15 @@ class AmbariPrometheusServiceDiscovery():
                         'RESOURCEMANAGER'):
                     is_master = True
 
-            if is_master:
-                logging.debug('%s host identified as master node', host)
-                targets[master_target_index]['targets'].append(host)
+            if host not in targets[master_target_index]['targets'] and host not in targets[worker_target_index]['targets']:
+                if is_master:
+                    logging.debug('%s identified as master node', host)
+                    targets[master_target_index]['targets'].append(host)
+                else:
+                    logging.debug('%s identified as worker node', host)
+                    targets[worker_target_index]['targets'].append(host)
             else:
-                targets[worker_target_index]['targets'].append(host)
+                logging.debug('%s already in output', host)
 
         return targets
 
