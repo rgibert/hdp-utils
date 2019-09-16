@@ -55,7 +55,7 @@ while getopts ":u:p:s:f:g:a:h" OPT; do
     a)
       admin_user_list="${OPTARG}"
       ;;
-    h)
+    *)
       print_help
       ;;
   esac

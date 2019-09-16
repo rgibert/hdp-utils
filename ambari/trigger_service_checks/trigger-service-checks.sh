@@ -66,7 +66,7 @@ while getopts ":u:p:c:s:n:h" OPT; do
     n)
       cluster_name="${OPTARG}"
       ;;
-    h)
+    *)
       print_help
       ;;
   esac
