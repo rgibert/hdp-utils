@@ -40,12 +40,15 @@ class AmbariPrometheusServiceDiscovery():
     """Class for generating Ambari Prometheus host lists"""
 
     def __init__(self):
-        self._cluster_name = get_env_var('AMBARI_CLUSTER_NAME')
+        self._cluster_name = get_env_var('AMBARI_CLUSTER_NAME', False)
         self._uri = get_env_var('AMBARI_URI')
         self._ambari_user = get_env_var('AMBARI_USER_NAME')
         self._ambari_pass = get_env_var('AMBARI_USER_PASS')
 
         args = process_args()
+
+        if self._cluster_name is None:
+            self.cluster_name = self.get_cluster_name()
 
         host_component_list = self.get_host_component_list()
         targets = self.generate_targets(host_component_list)
@@ -64,6 +67,19 @@ class AmbariPrometheusServiceDiscovery():
             full_uri,
             auth=(self._ambari_user, self._ambari_pass),
             verify=False)
+    
+    def get_cluster_name(self):
+        """Retrieves the first cluster listed"""
+        full_uri = self._uri + '/api/v1/clusters'
+
+        logging.debug(full_uri)
+
+        results = requests.get(
+            full_uri,
+            auth=(self._ambari_user, self._ambari_pass),
+            verify=False)
+        
+        return results['items'][0]['Clusters']['cluster_name']
 
     def get_host_component_list(self):
         """Generates a list of hosts and their installed components"""

@@ -19,30 +19,30 @@ def process_args():
     parser.add_argument('--host', action='store')
     return parser.parse_args()
 
+def get_env_var(var_name, exit_on_missing=True):
+    """Retrieve the value of environment variables"""
+    if os.environ.get(var_name) is None:
+        if exit_on_missing:
+            print("Required {} environment variable not set.".format(var_name))
+            sys.exit(1)
+        else:
+            return None
+    else:
+        return os.environ[var_name]
+
 class AmbariInventory(object):
     """Class for generating Ambari inventories"""
 
     def __init__(self):
-        if os.environ.get('AMBARI_CLUSTER_NAME') is None:
-            print("Required AMBARI_CLUSTER_NAME environment variable not set.")
-            sys.exit(1)
-        elif os.environ.get('AMBARI_USER_NAME') is None:
-            print("Required AMBARI_USER_NAME environment variable not set.")
-            sys.exit(1)
-        elif os.environ.get('AMBARI_USER_PASS') is None:
-            print("Required AMBARI_USER_PASS environment variable not set.")
-            sys.exit(1)
-        elif os.environ.get('AMBARI_URI') is None:
-            print("Required AMBARI_URI environment variable not set.")
-            sys.exit(1)
-
-        # Get the cluster name from the OS environment variable AMBARI_CLUSTER_NAME
-        self.cluster_name = os.environ['AMBARI_CLUSTER_NAME']
-        self.uri = os.environ['AMBARI_URI']
-        self.ambari_user = os.environ['AMBARI_USER_NAME']
-        self.ambari_pass = os.environ['AMBARI_USER_PASS']
+        self._cluster_name = get_env_var('AMBARI_CLUSTER_NAME', False)
+        self._uri = get_env_var('AMBARI_URI')
+        self._ambari_user = get_env_var('AMBARI_USER_NAME')
+        self._ambari_pass = get_env_var('AMBARI_USER_PASS')
 
         args = process_args()
+
+        if self._cluster_name is None:
+            self.cluster_name = self.get_cluster_name()
 
         # Called with `--list`.
         if args.list:
@@ -141,7 +141,7 @@ class AmbariInventory(object):
                     }
                 }
             else:
-                logging.debug('Loading JSON data from ' + self.uri)
+                logging.debug('Loading JSON data from ' + self._uri)
                 service_list = self.get_service_list()
 
             ambari_inv = self.generate_ambari_inventory(service_list)
@@ -150,17 +150,30 @@ class AmbariInventory(object):
         # '--host' not supported
         else:
             print('{}')
+    
+    def get_cluster_name(self):
+        """Retrieves the first cluster listed"""
+        full_uri = self._uri + '/api/v1/clusters'
+
+        logging.debug(full_uri)
+
+        results = requests.get(
+            full_uri,
+            auth=(self._ambari_user, self._ambari_pass),
+            verify=False)
+        
+        return results['items'][0]['Clusters']['cluster_name']
 
     # Handle API calls to Ambari
     def ambari_get(self, path):
         """Wrapper function for making REST calls to Ambari"""
-        full_uri = self.uri + '/api/v1/clusters/' + self.cluster_name + path
+        full_uri = self._uri + '/api/v1/clusters/' + self.cluster_name + path
         
         logging.debug(full_uri)
 
         return requests.get(
             full_uri,
-            auth=(self.ambari_user, self.ambari_pass),
+            auth=(self._ambari_user, self._ambari_pass),
             verify=False)
 
     # hosts/services/components from Ambari
@@ -203,7 +216,7 @@ class AmbariInventory(object):
     def generate_ambari_inventory(self, services):
         """Converts a service list into Ansible inventory format"""
 
-        ambari_host = re.sub(r'https?:\/\/', '', self.uri)
+        ambari_host = re.sub(r'https?:\/\/', '', self._uri)
         ambari_host = re.sub(r':\d+', '', ambari_host)
 
         # Default inventory
